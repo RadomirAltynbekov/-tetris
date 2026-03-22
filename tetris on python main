@@ -1,0 +1,279 @@
+import pygame
+import random
+
+pygame.init()
+
+WIDTH, HEIGHT = 300, 600
+BLOCK_SIZE = 30
+
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Tetris")
+
+BLACK = (0, 0, 0)
+GRAY = (50, 50, 50)
+WHITE = (255, 255, 255)
+
+SHAPES = [
+    [[1, 1, 1, 1]],
+    [[1, 1], [1, 1]],
+    [[0, 1, 0], [1, 1, 1]],
+    [[1, 1, 0], [0, 1, 1]],
+    [[0, 1, 1], [1, 1, 0]],
+    [[1, 0, 0], [1, 1, 1]],
+    [[0, 0, 1], [1, 1, 1]]
+]
+
+COLORS = [
+    (0, 255, 255),
+    (255, 255, 0),
+    (128, 0, 128),
+    (0, 255, 0),
+    (255, 0, 0),
+    (0, 0, 255),
+    (255, 165, 0)
+]
+
+LEVEL_SPEED = {
+    1: 700,
+    2: 550,
+    3: 400,
+    4: 250,
+    5: 120
+}
+
+font = pygame.font.SysFont("Arial", 30)
+big_font = pygame.font.SysFont("Arial", 50)
+
+class Piece:
+    def __init__(self):
+        self.shape = random.choice(SHAPES)
+        self.color = random.choice(COLORS)
+        self.x = WIDTH // BLOCK_SIZE // 2 - len(self.shape[0]) // 2
+        self.y = 0
+
+def draw_grid(grid):
+    for y, row in enumerate(grid):
+        for x, val in enumerate(row):
+            if val:
+                pygame.draw.rect(screen, val,
+                                 (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE))
+            pygame.draw.rect(screen, GRAY,
+                             (x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 1)
+
+def valid_move(piece, grid, dx, dy):
+    for y, row in enumerate(piece.shape):
+        for x, cell in enumerate(row):
+            if cell:
+                new_x = piece.x + x + dx
+                new_y = piece.y + y + dy
+                if new_x < 0 or new_x >= WIDTH // BLOCK_SIZE or new_y >= HEIGHT // BLOCK_SIZE:
+                    return False
+                if new_y >= 0 and grid[new_y][new_x]:
+                    return False
+    return True
+
+def merge(piece, grid):
+    for y, row in enumerate(piece.shape):
+        for x, cell in enumerate(row):
+            if cell:
+                grid[piece.y + y][piece.x + x] = piece.color
+
+def clear_lines(grid):
+    lines_cleared = 0
+    new_grid = []
+    for row in grid:
+        if all(cell != 0 for cell in row):
+            lines_cleared += 1
+        else:
+            new_grid.append(row)
+    while len(new_grid) < HEIGHT // BLOCK_SIZE:
+        new_grid.insert(0, [0 for _ in range(WIDTH // BLOCK_SIZE)])
+    grid[:] = new_grid
+    return lines_cleared
+
+def rotate(shape):
+    return [list(row) for row in zip(*shape[::-1])]
+
+# Главное меню
+def show_menu():
+    screen.fill(BLACK)
+    title = big_font.render("TETRIS", True, WHITE)
+    screen.blit(title, (WIDTH//2 - title.get_width()//2, 50))
+    instructions = [
+        "Arrow Left/Right: Move",
+        "Arrow Up: Rotate",
+        "Arrow Down: Fast Drop",
+        "R: Restart",
+        "ESC: Pause",
+        "1-5: Select Level"
+    ]
+    for i, line in enumerate(instructions):
+        text = font.render(line, True, WHITE)
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, 150 + i*40))
+    prompt = font.render("Press 1-5 to Start", True, WHITE)
+    screen.blit(prompt, (WIDTH//2 - prompt.get_width()//2, HEIGHT - 100))
+    pygame.display.flip()
+
+    selecting = True
+    selected_level = 1
+    while selecting:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            if event.type == pygame.KEYDOWN:
+                if pygame.K_1 <= event.key <= pygame.K_5:
+                    selected_level = event.key - pygame.K_0
+                    selecting = False
+    return selected_level
+
+# Меню паузы
+def pause_menu():
+    paused = True
+    while paused:
+        screen.fill(BLACK)
+        title = big_font.render("PAUSED", True, WHITE)
+        screen.blit(title, (WIDTH//2 - title.get_width()//2, 100))
+        options = ["1. Continue", "2. Main Menu"]
+        for i, line in enumerate(options):
+            text = font.render(line, True, WHITE)
+            screen.blit(text, (WIDTH//2 - text.get_width()//2, 250 + i*50))
+        pygame.display.flip()
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    paused = False  # Продолжаем игру
+                if event.key == pygame.K_2:
+                    return "menu"  # Возврат в главное меню
+    return "continue"
+
+# Основная игра 
+def game_loop(start_level):
+    global score
+    level = start_level
+    fall_speed = LEVEL_SPEED[level]
+    score = 0
+    grid = [[0 for _ in range(WIDTH // BLOCK_SIZE)] for _ in range(HEIGHT // BLOCK_SIZE)]
+    piece = Piece()
+    fall_time = 0
+    game_over = False
+    clock = pygame.time.Clock()
+
+    running = True
+    while running:
+        screen.fill(BLACK)
+
+        # UI текст
+        level_text = font.render(f"Level: {level}", True, WHITE)
+        screen.blit(level_text, (10, 10))
+        score_text = font.render(f"Score: {score}", True, WHITE)
+        screen.blit(score_text, (10, 40))
+        hint2 = font.render("R: restart, ESC: pause", True, WHITE)
+        screen.blit(hint2, (10, 70))
+
+        if game_over:
+            text = font.render("   GAME OVER", True, (255, 0, 0))
+            screen.blit(text, (WIDTH//2 - 100, HEIGHT//2 - 20))
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    pygame.quit()
+                    exit()
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        return "menu"  # ESC сразу на главное меню
+                    if pygame.K_1 <= event.key <= pygame.K_5:
+                        level = event.key - pygame.K_0
+                        fall_speed = LEVEL_SPEED[level]
+                        grid = [[0 for _ in range(WIDTH // BLOCK_SIZE)] for _ in range(HEIGHT // BLOCK_SIZE)]
+                        piece = Piece()
+                        score = 0
+                        game_over = False
+                    if event.key == pygame.K_r:
+                        grid = [[0 for _ in range(WIDTH // BLOCK_SIZE)] for _ in range(HEIGHT // BLOCK_SIZE)]
+                        piece = Piece()
+                        score = 0
+                        game_over = False
+            pygame.display.flip()
+            continue
+
+        fall_time += clock.get_rawtime()
+        clock.tick()
+
+        if fall_time > fall_speed:
+            if valid_move(piece, grid, 0, 1):
+                piece.y += 1
+            else:
+                merge(piece, grid)
+                lines_cleared = clear_lines(grid)
+
+                # начисление очков
+                if lines_cleared == 1:
+                    score += 100 * level
+                elif lines_cleared == 2:
+                    score += 300 * level
+                elif lines_cleared == 3:
+                    score += 700 * level
+                elif lines_cleared >= 4:
+                    score += 1500 * level
+
+                # авто-уровень по очкам
+                auto_level = min(5, score // 1000 + 1)
+                if auto_level > level:
+                    level = auto_level
+                    fall_speed = LEVEL_SPEED[level]
+
+                piece = Piece()
+                if not valid_move(piece, grid, 0, 0):
+                    game_over = True
+            fall_time = 0
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    result = pause_menu()
+                    if result == "menu":
+                        return "menu"
+                if pygame.K_1 <= event.key <= pygame.K_5:
+                    level = event.key - pygame.K_0
+                    fall_speed = LEVEL_SPEED[level]
+                if event.key == pygame.K_LEFT and valid_move(piece, grid, -1, 0):
+                    piece.x -= 1
+                if event.key == pygame.K_RIGHT and valid_move(piece, grid, 1, 0):
+                    piece.x += 1
+                if event.key == pygame.K_DOWN and valid_move(piece, grid, 0, 1):
+                    piece.y += 1
+                if event.key == pygame.K_UP:
+                    rotated = rotate(piece.shape)
+                    old_shape = piece.shape
+                    piece.shape = rotated
+                    if not valid_move(piece, grid, 0, 0):
+                        piece.shape = old_shape
+
+        # Рисуем фигуру
+        for y, row in enumerate(piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    pygame.draw.rect(screen, piece.color,
+                                     ((piece.x + x) * BLOCK_SIZE,
+                                      (piece.y + y) * BLOCK_SIZE,
+                                      BLOCK_SIZE, BLOCK_SIZE))
+
+        draw_grid(grid)
+        pygame.display.flip()
+
+# Главный цикл
+while True:
+    start_level = show_menu()
+    result = game_loop(start_level)
+    if result != "menu":
+        break
+
+pygame.quit()
