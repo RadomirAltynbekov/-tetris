@@ -1,0 +1,49 @@
+for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+                exit()
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    result = pause_menu()
+                    if result == "menu":
+                        return "menu"
+                if pygame.K_1 <= event.key <= pygame.K_5:
+                    level = event.key - pygame.K_0
+                    fall_speed = LEVEL_SPEED[level]
+                if event.key == pygame.K_LEFT and valid_move(piece, grid, -1, 0):
+                    piece.x -= 1
+                if event.key == pygame.K_RIGHT and valid_move(piece, grid, 1, 0):
+                    piece.x += 1
+                if event.key == pygame.K_DOWN and valid_move(piece, grid, 0, 1):
+                    piece.y += 1
+                if event.key == pygame.K_UP:
+                    rotated = rotate(piece.shape)
+                    old_shape = piece.shape
+                    piece.shape = rotated
+                    if not valid_move(piece, grid, 0, 0):
+                        piece.shape = old_shape
+                if event.key == pygame.K_SPACE:
+                    while valid_move(piece, grid, 0, 1):
+                            piece.y += 1
+
+        # Рисуем фигуру
+        for y, row in enumerate(piece.shape):
+            for x, cell in enumerate(row):
+                if cell:
+                    pygame.draw.rect(screen, piece.color,
+                                     ((piece.x + x) * BLOCK_SIZE,
+                                      (piece.y + y) * BLOCK_SIZE,
+                                      BLOCK_SIZE, BLOCK_SIZE))
+
+        draw_grid(grid)
+        pygame.display.flip()
+
+# --------- Главный цикл ---------
+while True:
+    start_level = show_menu()
+    result = game_loop(start_level)
+    if result != "menu":
+        break
+
+pygame.quit()
+
